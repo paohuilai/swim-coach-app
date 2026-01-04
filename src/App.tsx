@@ -24,7 +24,8 @@ function ClerkProviderWithRoutes() {
   return (
     <ClerkProvider
       publishableKey={clerkPubKey || "pk_test_placeholder"}
-      navigate={(to) => navigate(to)}
+      routerPush={(to) => navigate(to)}
+      routerReplace={(to) => navigate(to, { replace: true })}
       localization={zhCN}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
