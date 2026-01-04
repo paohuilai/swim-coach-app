@@ -372,9 +372,9 @@ export default function Insights() {
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="p-6 border-b border-gray-100 flex justify-between items-start sticky top-0 bg-white z-10">
+            <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-start sticky top-0 bg-white z-10">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">{selectedInsight.title}</h2>
+                <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">{selectedInsight.title}</h2>
                 <div className="flex items-center text-sm text-gray-500 space-x-3">
                   <span className="flex items-center">
                     <Users className="w-4 h-4 mr-1" />

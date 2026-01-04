@@ -236,13 +236,13 @@ export default function Ranking() {
           成绩排行榜
         </h1>
         
-        <div className="bg-white p-4 rounded-lg shadow flex flex-wrap gap-4 items-end">
+        <div className="bg-white p-4 rounded-lg shadow flex flex-wrap gap-2 md:gap-4 items-end">
           {/* Venue Filter (Multi-select) */}
-          <div className="relative" ref={venueDropdownRef}>
+          <div className="relative w-full sm:w-auto" ref={venueDropdownRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">场馆对比</label>
             <button
                 onClick={() => setIsVenueDropdownOpen(!isVenueDropdownOpen)}
-                className="border border-gray-300 rounded-md px-3 py-2 bg-white flex items-center justify-between min-w-[160px] text-sm focus:ring-2 focus:ring-blue-500"
+                className="border border-gray-300 rounded-md px-3 py-2 bg-white flex items-center justify-between w-full sm:min-w-[160px] text-sm focus:ring-2 focus:ring-blue-500"
             >
                 <span className="truncate max-w-[120px]">
                     {selectedVenues.length === 0 ? "全部场馆" : selectedVenues.join(", ")}

@@ -47,6 +47,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Top Navigation - Desktop */}
       <header className="bg-dolphin-blue border-b border-blue-900 sticky top-0 z-10 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center">
@@ -57,7 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className="text-xs text-dolphin-gold font-medium tracking-wider">KING DOLPHIN</span>
               </div>
             </Link>
-            <nav className="ml-10 flex space-x-4">
+            <nav className="ml-10 hidden md:flex space-x-4">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.href || (item.href !== '/dashboard' && location.pathname.startsWith(item.href));
@@ -93,9 +94,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8 pb-24 md:pb-8">
         {children}
       </main>
+
+      {/* Bottom Navigation - Mobile */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 pb-safe">
+        <div className="flex justify-around items-center h-16">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.href || (item.href !== '/dashboard' && location.pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                to={item.href}
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-full space-y-1",
+                  isActive ? "text-blue-600" : "text-gray-500 hover:text-gray-900"
+                )}
+              >
+                <Icon className={cn("w-6 h-6", isActive && "fill-current")} />
+                <span className="text-[10px] font-medium">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
