@@ -693,34 +693,34 @@ export default function AthleteDetails() {
        </div>
 
        {/* History Table */}
-       <div className="bg-white shadow rounded-lg overflow-hidden">
+       <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
          <div className="px-6 py-4 border-b border-gray-200">
-           <h3 className="text-lg font-bold text-gray-900">历史记录</h3>
+           <h3 className="text-lg font-medium text-gray-900">历史记录</h3>
          </div>
-         <div className="overflow-x-auto">
+         <div className="overflow-x-auto w-full">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">训练量 (km)</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">成绩</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase">日期</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase">训练量 (km)</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase">成绩</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase">状态</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 uppercase">操作</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredLogs.map(log => (
                 <tr key={log.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-900">{format(new Date(log.date), 'yyyy年MM月dd日')}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-500">{log.distance_km}</td>
-                  <td className="px-6 py-4 text-gray-500">
+                  <td className="px-4 py-4 whitespace-nowrap text-gray-900 text-sm">{format(new Date(log.date), 'yyyy年MM月dd日')}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-sm">{log.distance_km}</td>
+                  <td className="px-4 py-4 text-gray-500 text-sm">
                     {log.performance_entries?.map(p => (
                       <div key={p.id} className="text-sm py-1">
                         <span className="font-medium text-gray-700">{p.stroke}:</span> {p.time_seconds}s
                       </div>
                     ))}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                  <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-sm">
                     {log.status_score !== null && log.status_score !== undefined ? (
                         <div className="flex flex-col">
                             <span className={`font-bold ${log.status_score >= 80 ? 'text-green-600' : log.status_score >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
@@ -732,7 +732,7 @@ export default function AthleteDetails() {
                         <span className="text-gray-300">-</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button
                       onClick={() => openEditModal(log)}
                       className="text-blue-600 hover:text-blue-900 mr-3"
@@ -752,7 +752,7 @@ export default function AthleteDetails() {
               ))}
               {filteredLogs.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">暂无训练记录</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-sm">暂无训练记录</td>
                 </tr>
               )}
             </tbody>

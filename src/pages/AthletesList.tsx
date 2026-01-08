@@ -427,14 +427,14 @@ export default function AthletesList() {
                 </button>
                 
                 {isExpanded && (
-                  <div className="border-t border-gray-200 overflow-x-auto">
+                  <div className="border-t border-gray-200 overflow-x-auto w-full">
                      <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">姓名</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">出生年份 (年龄)</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">性别</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">姓名</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">出生年份 (年龄)</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">性别</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">操作</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -445,9 +445,9 @@ export default function AthletesList() {
 
                           return (
                             <tr key={athlete.id} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
-                                  <Link to={`/athletes/${athlete.id}`} className="text-blue-600 hover:underline font-medium flex items-center">
+                                  <Link to={`/athletes/${athlete.id}`} className="text-blue-600 hover:underline font-medium flex items-center text-sm">
                                     <User className="w-4 h-4 mr-2 text-gray-400" />
                                     {athlete.name}
                                   </Link>
@@ -471,7 +471,7 @@ export default function AthletesList() {
                                   </span>
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                              <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-sm">
                                   {athlete.birth_year ? (
                                       <span>
                                           {athlete.birth_year}年
@@ -479,8 +479,8 @@ export default function AthletesList() {
                                       </span>
                                   ) : "-"}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-gray-500">{athlete.gender || "-"}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-sm">{athlete.gender || "-"}</td>
+                              <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <button
                                   onClick={() => openEditModal(athlete)}
                                   className="text-blue-600 hover:text-blue-900 mr-3"

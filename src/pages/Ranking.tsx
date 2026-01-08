@@ -236,13 +236,13 @@ export default function Ranking() {
           成绩排行榜
         </h1>
         
-        <div className="bg-white p-4 rounded-lg shadow flex flex-wrap gap-2 md:gap-4 items-end">
+        <div className="bg-white p-4 rounded-lg shadow flex flex-wrap gap-4 items-end">
           {/* Venue Filter (Multi-select) */}
-          <div className="relative w-full sm:w-auto" ref={venueDropdownRef}>
+          <div className="relative" ref={venueDropdownRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">场馆对比</label>
             <button
                 onClick={() => setIsVenueDropdownOpen(!isVenueDropdownOpen)}
-                className="border border-gray-300 rounded-md px-3 py-2 bg-white flex items-center justify-between w-full sm:min-w-[160px] text-sm focus:ring-2 focus:ring-blue-500"
+                className="border border-gray-300 rounded-md px-3 py-2 bg-white flex items-center justify-between min-w-[160px] text-sm focus:ring-2 focus:ring-blue-500"
             >
                 <span className="truncate max-w-[120px]">
                     {selectedVenues.length === 0 ? "全部场馆" : selectedVenues.join(", ")}
@@ -352,7 +352,7 @@ export default function Ranking() {
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
         {loading ? (
           <div className="p-12 text-center text-gray-500">加载中...</div>
         ) : rankings.length === 0 ? (
@@ -360,15 +360,16 @@ export default function Ranking() {
             暂无符合条件的记录
           </div>
         ) : (
+          <div className="overflow-x-auto w-full">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-16">排名</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">场馆</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">运动员</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">教练</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">成绩 (秒)</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase w-16">排名</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase w-24">场馆</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase">运动员</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase">教练</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase">成绩 (秒)</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase">日期</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -381,9 +382,9 @@ export default function Ranking() {
 
                 return (
                   <tr key={entry.id} className={isMine ? "bg-green-50" : "hover:bg-gray-50"}>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <div className={`
-                        flex items-center justify-center w-8 h-8 rounded-full font-bold
+                        flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm
                         ${index === 0 ? 'bg-yellow-100 text-yellow-700' : 
                           index === 1 ? 'bg-gray-100 text-gray-700' :
                           index === 2 ? 'bg-orange-100 text-orange-700' : 'text-gray-500'}
@@ -391,7 +392,7 @@ export default function Ranking() {
                         {index + 1}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                         {venue ? (
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getVenueColor(venue)}`}>
                                 <div className={`w-2 h-2 rounded-full mr-1.5 ${getVenueColor(venue).replace('bg-', 'bg-opacity-50 bg-').replace('text-', 'bg-')}`}></div>
@@ -401,11 +402,11 @@ export default function Ranking() {
                             <span className="text-gray-400 text-xs">-</span>
                         )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <User className="w-4 h-4 mr-2 text-gray-400" />
                         <div>
-                            <span className="font-bold text-gray-900">
+                            <span className="font-bold text-gray-900 text-sm">
                             {entry.training_logs.athletes.name}
                             </span>
                             {age && <span className="text-xs text-gray-400 ml-1">({age}岁)</span>}
@@ -413,7 +414,7 @@ export default function Ranking() {
                         {isMine && <span className="ml-2 text-xs bg-green-200 text-green-800 px-2 py-0.5 rounded-full">我的运动员</span>}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {isMine ? "我" : (() => {
                           const c = entry.training_logs.athletes.coaches;
                           if (c && (c.first_name || c.last_name)) {
@@ -422,10 +423,10 @@ export default function Ranking() {
                           return `${entry.training_logs.athletes.coach_id.slice(0, 8)}...`;
                       })()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-medium text-blue-600">
+                    <td className="px-4 py-4 whitespace-nowrap font-medium text-blue-600 text-sm">
                       {entry.time_seconds}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500 text-sm">
+                    <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-sm">
                       {format(new Date(entry.training_logs.date), 'yyyy年MM月dd日')}
                     </td>
                   </tr>
@@ -433,6 +434,7 @@ export default function Ranking() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
