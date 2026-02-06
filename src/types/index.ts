@@ -6,6 +6,7 @@ export interface Athlete {
   gender: string | null;
   venue?: string | null;
   team?: string | null;
+  avatar_url?: string | null;
   created_at: string;
   // Computed/Joined fields
   current_status?: AthleteStatusHistory;
@@ -14,7 +15,8 @@ export interface Athlete {
 export interface AthleteStatusHistory {
   id: string;
   athlete_id: string;
-  status: 'training' | 'paused' | 'trial' | 'transferred';
+  status: 'training' | 'paused' | 'trial' | 'transferred' | 'other';
+  custom_status?: string | null;
   start_date: string;
   end_date?: string | null;
   destination?: string | null;
@@ -30,6 +32,13 @@ export interface TrainingLog {
   status_note?: string;
   created_at: string;
   performance_entries?: PerformanceEntry[];
+  // New fields
+  test_type?: string;
+  pool_info?: string;
+  recorder?: string;
+  rpe?: number;
+  stroke_rate?: number;
+  stroke_length?: number;
 }
 
 export interface PerformanceEntry {
@@ -38,6 +47,10 @@ export interface PerformanceEntry {
   stroke: string;
   time_seconds: number;
   created_at: string;
+  // New fields
+  timing_method?: string;
+  split_times?: string[]; // Stored as JSONB
+  reaction_time?: number;
 }
 
 export interface InsightMedia {
@@ -48,11 +61,17 @@ export interface InsightMedia {
   created_at: string;
 }
 
+export type UserRole = 'admin' | 'manager' | 'coach';
+
 export interface Coach {
   id: string;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  role?: UserRole;
+  venue?: string | null;
+  managed_venue?: string | null;
+  team?: string | null;
 }
 
 export interface TrainingInsight {
@@ -67,49 +86,141 @@ export interface TrainingInsight {
   coaches?: Coach;
 }
 
-export interface CoachTarget {
+export interface TrainingPlan {
   id: string;
   coach_id: string;
-  birth_year: number; // 0 for "All"
-  custom_group_id?: string;
-  period_start: string;
-  period_end: string;
-  target_sessions: number;
-  target_km: number;
-  name?: string;
-  is_pinned?: boolean;
+  date: string;
+  title?: string;
+  content?: string;
+  media_urls?: { type: 'image' | 'video'; url: string }[];
+  target_groups?: any; // JSONB array
   created_at: string;
 }
 
-export interface CoachSignin {
+export interface Competition {
   id: string;
-  coach_id: string;
-  birth_year: number; // 0 for "All"
-  custom_group_id?: string;
-  signin_date: string;
-  sessions: number;
-  km: number;
-  note?: string;
+  title: string;
+  date: string;
+  created_by?: string;
+  created_at: string;
+  results?: CompetitionResult[];
+}
+
+export interface CompetitionResult {
+  id: string;
+  competition_id: string;
+  athlete_name: string;
+  age_group: string;
+  event: string;
+  score: string;
+  rank: number;
   created_at: string;
 }
 
-export interface CoachCustomGroup {
+// Manager Task Types
+export type TaskType = 'plan_upload' | 'score_record';
+export type TaskStatus = 'pending' | 'completed';
+
+export interface ManagerTask {
   id: string;
-  coach_id: string;
-  name: string;
-  birth_years: number[];
-  is_pinned: boolean;
+  type: TaskType;
+  title: string;
+  description?: string;
+  deadline: string;
+  venue: string;
+  created_by: string;
   created_at: string;
+  // Join fields
+  submissions?: TaskSubmission[];
 }
 
-export interface CoachPeriod {
+export interface TaskSubmission {
   id: string;
+  task_id: string;
   coach_id: string;
-  custom_group_id?: string;
-  birth_year?: number;
-  name: string;
+  status: TaskStatus;
+  submission_id?: string;
+  submitted_at?: string;
+  created_at: string;
+  // Join fields
+  coach?: Coach;
+}
+
+// ==========================================
+// National Team Types
+// ==========================================
+
+export interface NationalAthlete extends Athlete {
+  status: 'active' | 'injured' | 'rehabilitation' | 'suspended' | 'retired';
+  level: 'national' | 'national_youth' | 'provincial';
+  main_stroke?: string;
+  height?: number;
+  weight?: number;
+  wingspan?: number;
+  medical_history?: MedicalRecord[]; // JSONB
+  growth_trajectory?: GrowthStat[]; // JSONB
+}
+
+export interface MedicalRecord {
+  date: string;
+  type: string;
+  description: string;
+  doctor?: string;
+}
+
+export interface GrowthStat {
+  date: string;
+  height?: number;
+  weight?: number;
+  wingspan?: number;
+  vo2max?: number;
+}
+
+export interface NationalTrainingPlan {
+  id: string;
+  title: string;
+  coach_id: string;
   start_date: string;
   end_date: string;
-  is_pinned: boolean;
+  cycle_type?: 'macro' | 'meso' | 'micro';
+  modules: TrainingModule[]; // JSONB
+  total_load: number;
+  status: 'draft' | 'published' | 'completed' | 'archived';
+  is_template: boolean;
   created_at: string;
+}
+
+export interface TrainingModule {
+  id: string;
+  content: string;
+  load: number;
+  duration?: number; // minutes
+}
+
+export interface NationalTask {
+  id: string;
+  title: string;
+  description?: string;
+  type: 'training' | 'medical' | 'research' | 'admin';
+  priority: 'high' | 'medium' | 'low';
+  status: 'pending' | 'in_progress' | 'completed' | 'overdue' | 'archived';
+  creator_id: string;
+  assignee_id?: string;
+  assignee_role?: string;
+  deadline: string;
+  dependencies?: string[]; // UUID[]
+  quality_score?: number;
+  attachments?: string[]; // URLs
+  created_at: string;
+}
+
+export interface WarRoomVideo {
+  id: string;
+  project_id: string;
+  url: string;
+  type: 'self' | 'opponent';
+  athlete_name?: string;
+  lane_number?: number;
+  annotations?: any[]; // JSONB
+  sync_offset?: number;
 }

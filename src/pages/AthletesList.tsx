@@ -1,10 +1,14 @@
-import { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
-import { Plus, Trash2, User, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Plus, Trash2, User, ChevronDown, ChevronUp, Pencil, TrendingUp, Upload, FileSpreadsheet } from "lucide-react";
 import { useUser } from "@clerk/clerk-react";
 import { supabase } from "../lib/supabase";
 import { Athlete, AthleteStatusHistory } from "../types";
 import { subDays, format } from "date-fns";
+import { useCoachProfile } from "../hooks/useCoachProfile";
+import { read, utils } from 'xlsx';
+import { parseSwimTime } from "../lib/terminology";
+import { useAuditLog } from "../hooks/useAuditLog";
 
 const VENUE_OPTIONS = ["东山馆", "莘塍馆", "海城馆", "塘下馆", "开元馆", "飞云馆", "其他"];
 const TEAM_OPTIONS = ["一队", "二队", "三队", "四队", "五队", "其他"];
@@ -18,6 +22,11 @@ const STATUS_CONFIG = {
 
 export default function AthletesList() {
   const { user } = useUser();
+  const { profile, isAdmin, isManager } = useCoachProfile();
+  const { logAction } = useAuditLog();
+  const location = useLocation();
+  const navigate = useNavigate();
+  
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -27,6 +36,8 @@ export default function AthletesList() {
   
   // Quick Edit State
   const [quickEditAthlete, setQuickEditAthlete] = useState<Athlete | null>(null);
+  const [quickEditStatusAthlete, setQuickEditStatusAthlete] = useState<Athlete | null>(null);
+  const [showQuickEntryModal, setShowQuickEntryModal] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -44,23 +55,38 @@ export default function AthletesList() {
   const [statusStartDate, setStatusStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [transferDest, setTransferDest] = useState("");
 
-  // Grouping State
+  // Grouping & Search State
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Admin Filters
+  const [adminVenueFilter, setAdminVenueFilter] = useState("全部");
+
+  // Excel Import
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
 
   const CURRENT_YEAR = new Date().getFullYear();
 
   useEffect(() => {
-    if (user) {
+    const params = new URLSearchParams(location.search);
+    if (params.get('action') === 'quick_entry') {
+      setShowQuickEntryModal(true);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (user && profile) {
       fetchAthletes();
     }
-  }, [user]);
+  }, [user, profile, adminVenueFilter]); // Reload if admin filter changes
 
   async function fetchAthletes() {
     if (!user) return;
     setLoading(true);
     
-    // Fetch athletes and their status history
-    const { data, error } = await supabase
+    // Build Query based on Permissions
+    let query = supabase
       .from("athletes")
       .select(`
         *,
@@ -68,8 +94,28 @@ export default function AthletesList() {
           *
         )
       `)
-      .eq("coach_id", user.id)
       .order("created_at", { ascending: false });
+
+    // Apply Permission Filters
+    if (isAdmin) {
+      // Admin sees all. Apply optional venue filter.
+      if (adminVenueFilter !== "全部") {
+        query = query.eq("venue", adminVenueFilter);
+      }
+    } else if (isManager) {
+      // Manager sees all in their venue
+      if (profile?.venue) {
+        query = query.eq("venue", profile.venue);
+      } else {
+        // Fallback if venue not set (shouldn't happen for manager)
+        query = query.eq("coach_id", user.id); 
+      }
+    } else {
+      // Coach sees own athletes
+      query = query.eq("coach_id", user.id);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching athletes:", error);
@@ -90,14 +136,15 @@ export default function AthletesList() {
       setAthletes(processedData);
       
       // Initialize with all groups expanded
-      if (processedData.length > 0) {
-        // Generate initial group keys based on new grouping logic
+      if (processedData.length > 0 && expandedGroups.length === 0) {
         const groups = new Set<string>();
         processedData.forEach((a: Athlete) => {
             const by = a.birth_year;
             const g = a.gender || "未知";
+            const v = a.venue ? `-${a.venue}` : "";
+            // Use simplified grouping for initial expand if list is huge? No, expand all.
             if (by) {
-                groups.add(`${by}年${g}组`);
+                groups.add(`${by}年${g}组${v}`);
             } else {
                 groups.add("未分组");
             }
@@ -108,38 +155,36 @@ export default function AthletesList() {
     setLoading(false);
   }
 
-  // Group athletes by Birth Year + Gender
+  // Filter athletes based on search
+  const filteredAthletes = useMemo(() => {
+    if (!searchQuery.trim()) return athletes;
+    return athletes.filter(a => a.name.includes(searchQuery.trim()));
+  }, [athletes, searchQuery]);
+
+  // Group athletes by Birth Year + Gender + Venue
   const groupedAthletes = useMemo(() => {
     const groups: Record<string, Athlete[]> = {};
     
-    athletes.forEach(athlete => {
+    filteredAthletes.forEach(athlete => {
       let key = "未分组";
       if (athlete.birth_year) {
           const g = athlete.gender || "未知";
-          key = `${athlete.birth_year}年${g}组`;
+          const v = athlete.venue ? `-${athlete.venue}` : "";
+          key = `${athlete.birth_year}年${g}组${v}`;
       }
       
       if (!groups[key]) groups[key] = [];
       groups[key].push(athlete);
     });
     
-    // Sort keys: Younger (larger year) first? Or Older (smaller year) first?
-    // Usually sports teams list older first or younger first.
-    // Let's sort by Year Descending (Younger first) for now, or Year Ascending (Older first).
-    // Let's do Year Descending (2020, 2019, 2018...)
-    
     const sortedKeys = Object.keys(groups).sort((a, b) => {
       if (a === "未分组") return 1;
       if (b === "未分组") return -1;
       
-      // Extract year
       const yearA = parseInt(a);
       const yearB = parseInt(b);
       
-      if (yearA !== yearB) return yearB - yearA; // Descending year
-      
-      // If year same, sort by gender (Women first? Men first?)
-      // String comparison
+      if (yearA !== yearB) return yearB - yearA; 
       return a.localeCompare(b);
     });
     
@@ -147,7 +192,7 @@ export default function AthletesList() {
       title: key,
       items: groups[key]
     }));
-  }, [athletes]);
+  }, [filteredAthletes]);
 
   const toggleGroup = (title: string) => {
     setExpandedGroups(prev => 
@@ -186,7 +231,6 @@ export default function AthletesList() {
     setBirthYear(athlete.birth_year?.toString() || "");
     setGender(athlete.gender || "男");
     
-    // Determine venue state
     const currentVenue = athlete.venue || "";
     if (VENUE_OPTIONS.includes(currentVenue)) {
       setVenueSelect(currentVenue);
@@ -196,7 +240,6 @@ export default function AthletesList() {
       setVenueCustom(currentVenue);
     }
 
-    // Determine team state
     const currentTeam = athlete.team || "";
     if (TEAM_OPTIONS.includes(currentTeam)) {
       setTeamSelect(currentTeam);
@@ -206,7 +249,6 @@ export default function AthletesList() {
       setTeamCustom(currentTeam);
     }
     
-    // Status
     const cur = athlete.current_status;
     setStatus(cur?.status || 'training');
     setStatusStartDate(cur?.start_date || new Date().toISOString().split('T')[0]);
@@ -217,7 +259,6 @@ export default function AthletesList() {
 
   function openQuickEdit(athlete: Athlete) {
     setQuickEditAthlete(athlete);
-    // Determine venue state
     const currentVenue = athlete.venue || "";
     if (VENUE_OPTIONS.includes(currentVenue)) {
       setVenueSelect(currentVenue);
@@ -227,7 +268,6 @@ export default function AthletesList() {
       setVenueCustom(currentVenue);
     }
 
-    // Determine team state
     const currentTeam = athlete.team || "";
     if (TEAM_OPTIONS.includes(currentTeam)) {
       setTeamSelect(currentTeam);
@@ -236,6 +276,14 @@ export default function AthletesList() {
       setTeamSelect("其他");
       setTeamCustom(currentTeam);
     }
+  }
+
+  function openQuickStatusEdit(athlete: Athlete) {
+    setQuickEditStatusAthlete(athlete);
+    const cur = athlete.current_status;
+    setStatus(cur?.status || 'training');
+    setStatusStartDate(cur?.start_date || new Date().toISOString().split('T')[0]);
+    setTransferDest(cur?.destination || "");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -265,7 +313,6 @@ export default function AthletesList() {
       const currentStatus = editingAthlete.current_status;
       
       if (currentStatus?.status !== status) {
-          // Close old record
           if (currentStatus) {
               const newStart = new Date(statusStartDate);
               const endDate = subDays(newStart, 1);
@@ -275,7 +322,6 @@ export default function AthletesList() {
                   .eq("id", currentStatus.id);
           }
           
-          // Create new record
           await supabase.from("athlete_status_history").insert({
               athlete_id: editingAthlete.id,
               status,
@@ -319,7 +365,6 @@ export default function AthletesList() {
       if (error) {
         alert("添加运动员失败: " + error.message);
       } else if (newAthlete) {
-        // Create initial status history
         await supabase.from("athlete_status_history").insert({
             athlete_id: newAthlete.id,
             status, 
@@ -353,6 +398,52 @@ export default function AthletesList() {
     }
   }
 
+  async function handleQuickStatusSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!quickEditStatusAthlete) return;
+
+    const currentStatus = quickEditStatusAthlete.current_status;
+      
+    if (currentStatus?.status !== status) {
+        if (currentStatus) {
+            const newStart = new Date(statusStartDate);
+            const endDate = subDays(newStart, 1);
+            
+            await supabase.from("athlete_status_history")
+                .update({ end_date: format(endDate, 'yyyy-MM-dd') })
+                .eq("id", currentStatus.id);
+        }
+        
+        await supabase.from("athlete_status_history").insert({
+            athlete_id: quickEditStatusAthlete.id,
+            status,
+            start_date: statusStartDate,
+            destination: (status === 'transferred' || status === 'trial') ? transferDest : null,
+            coach_id: user?.id
+        });
+    } else {
+        if (currentStatus) {
+            await supabase.from("athlete_status_history")
+              .update({
+                  start_date: statusStartDate,
+                  destination: (status === 'transferred' || status === 'trial') ? transferDest : null
+              })
+              .eq("id", currentStatus.id);
+        } else {
+            await supabase.from("athlete_status_history").insert({
+              athlete_id: quickEditStatusAthlete.id,
+              status,
+              start_date: statusStartDate,
+              destination: (status === 'transferred' || status === 'trial') ? transferDest : null,
+              coach_id: user?.id
+          });
+        }
+    }
+
+    setQuickEditStatusAthlete(null);
+    fetchAthletes();
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("确定要删除这位运动员吗？")) return;
 
@@ -360,8 +451,115 @@ export default function AthletesList() {
     if (error) {
       alert("删除运动员失败");
     } else {
+      logAction('delete_athlete', 'athlete', id, {});
       fetchAthletes();
     }
+  }
+
+  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setImporting(true);
+      try {
+          const data = await file.arrayBuffer();
+          const workbook = read(data);
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData: any[] = utils.sheet_to_json(worksheet);
+
+          console.log("Imported Data:", jsonData);
+
+          let successCount = 0;
+          let failCount = 0;
+
+          // Process each row
+          // Expected Headers: 姓名, 日期, 泳姿, 成绩, 泳池, 记录人, RPE, 划频, 划幅, 备注
+          for (const row of jsonData) {
+              const name = row['姓名'];
+              if (!name) continue;
+
+              // Find athlete
+              const athlete = athletes.find(a => a.name === name);
+              if (!athlete) {
+                  console.warn(`Athlete not found: ${name}`);
+                  failCount++;
+                  continue;
+              }
+
+              const dateStr = row['日期'] ? format(new Date(row['日期']), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+              const stroke = row['泳姿'] || '自由泳';
+              const timeStr = row['成绩']; // Can be string or number
+              const timeSeconds = parseSwimTime(timeStr);
+              const poolInfo = row['泳池'] || '25米池';
+              const recorder = row['记录人'] || user?.fullName || '批量导入';
+
+              if (timeSeconds <= 0) {
+                  console.warn(`Invalid time for ${name}: ${timeStr}`);
+                  failCount++;
+                  continue;
+              }
+
+              // Create Log
+              const { data: log, error: logError } = await supabase.from('training_logs').insert({
+                  athlete_id: athlete.id,
+                  coach_id: user?.id,
+                  date: dateStr,
+                  pool_info: poolInfo,
+                  recorder: recorder,
+                  test_type: '批量导入',
+                  rpe: row['RPE'] ? String(row['RPE']) : '3',
+                  stroke_rate: row['划频'] ? String(row['划频']) : null,
+                  stroke_length: row['划幅'] ? String(row['划幅']) : null,
+                  status_note: row['备注'] || '批量导入'
+              }).select().single();
+
+              if (logError || !log) {
+                  console.error("Log creation failed:", logError);
+                  failCount++;
+                  continue;
+              }
+
+              // Create Entry
+              const { error: entryError } = await supabase.from('performance_entries').insert({
+                  log_id: log.id,
+                  stroke,
+                  time_seconds: timeSeconds,
+                  timing_method: 'manual'
+              });
+
+              if (entryError) {
+                  console.error("Entry creation failed:", entryError);
+                  failCount++;
+              } else {
+                  successCount++;
+              }
+          }
+
+          alert(`导入完成！成功: ${successCount} 条, 失败: ${failCount} 条`);
+          
+      } catch (err: any) {
+          console.error("Import Error:", err);
+          alert("导入失败: " + err.message);
+      } finally {
+          setImporting(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+  }
+
+  function downloadTemplate() {
+      const headers = ['姓名', '日期', '泳姿', '成绩', '泳池', '记录人', 'RPE', '划频', '划幅', '备注'];
+      const example = ['张三', format(new Date(), 'yyyy-MM-dd'), '50米自由泳', '00:25.50', '50米池', '王教练', '5', '45', '1.2', '测试数据'];
+      
+      const ws = utils.aoa_to_sheet([headers, example]);
+      const wb = utils.book_new();
+      utils.book_append_sheet(wb, ws, "测试成绩模板");
+      // Add column widths
+      ws['!cols'] = [{wch:10}, {wch:12}, {wch:12}, {wch:10}, {wch:10}, {wch:10}, {wch:5}, {wch:8}, {wch:8}, {wch:20}];
+      
+      // Trigger download
+      import('xlsx').then(XLSX => {
+         XLSX.writeFile(wb, "批量导入模板.xlsx");
+      });
   }
 
   function getBadgeLabel(venue?: string | null, team?: string | null) {
@@ -377,33 +575,90 @@ export default function AthletesList() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">运动员管理</h1>
-        <div className="flex gap-2">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+            运动员管理
+            {isAdmin && <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">总管视图</span>}
+            {isManager && !isAdmin && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">馆长视图</span>}
+        </h1>
+        
+        <div className="flex flex-1 w-full md:w-auto items-center gap-2">
+            {/* Search */}
+            <div className="relative flex-1 max-w-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <User className="h-4 w-4 text-gray-400" />
+                </div>
+                <input
+                    type="text"
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="搜索运动员姓名..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </div>
+            
+            {/* Admin Venue Filter */}
+            {isAdmin && (
+                 <select
+                 value={adminVenueFilter}
+                 onChange={(e) => setAdminVenueFilter(e.target.value)}
+                 className="block w-32 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+               >
+                 <option value="全部">全部场馆</option>
+                 {VENUE_OPTIONS.filter(v => v !== "其他").map(v => (
+                   <option key={v} value={v}>{v}</option>
+                 ))}
+               </select>
+            )}
+        </div>
+
+        <div className="flex gap-2 w-full md:w-auto justify-end">
            <button 
              onClick={() => toggleAll(true)}
-             className="text-sm text-blue-600 hover:text-blue-800"
+             className="text-sm text-blue-600 hover:text-blue-800 whitespace-nowrap"
            >
-             展开全部
+             展开
            </button>
            <span className="text-gray-300">|</span>
            <button 
              onClick={() => toggleAll(false)}
-             className="text-sm text-blue-600 hover:text-blue-800"
+             className="text-sm text-blue-600 hover:text-blue-800 whitespace-nowrap"
            >
-             收起全部
+             收起
            </button>
+           
+           {/* Excel Import Button */}
+           <div className="relative">
+               <input 
+                   type="file" 
+                   ref={fileInputRef} 
+                   className="hidden" 
+                   accept=".xlsx, .xls" 
+                   onChange={handleExcelImport} 
+                   disabled={importing}
+               />
+               <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={importing}
+                    className="ml-4 bg-green-600 text-white font-bold px-4 py-2 rounded-md hover:bg-green-700 flex items-center shadow-sm whitespace-nowrap disabled:opacity-50"
+                    title="支持列: 姓名, 日期, 泳姿, 成绩, RPE, 划频, 划幅, 备注"
+                >
+                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                    {importing ? "导入中..." : "批量导入"}
+                </button>
+           </div>
+
            <button
             onClick={openAddModal}
-            className="ml-4 bg-dolphin-gold text-dolphin-blue font-bold px-4 py-2 rounded-md hover:bg-yellow-400 flex items-center shadow-sm"
+            className="ml-2 bg-dolphin-gold text-dolphin-blue font-bold px-4 py-2 rounded-md hover:bg-yellow-400 flex items-center shadow-sm whitespace-nowrap"
           >
             <Plus className="w-4 h-4 mr-2" />
-            添加运动员
+            添加
           </button>
         </div>
       </div>
 
-      {athletes.length === 0 ? (
+      {athletes.length === 0 && !loading ? (
         <div className="bg-white shadow rounded-lg p-12 text-center text-gray-500">
           暂无运动员，请点击右上角添加。
         </div>
@@ -448,7 +703,13 @@ export default function AthletesList() {
                               <td className="px-4 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <Link to={`/athletes/${athlete.id}`} className="text-blue-600 hover:underline font-medium flex items-center text-sm">
-                                    <User className="w-4 h-4 mr-2 text-gray-400" />
+                                    <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-100 mr-2 flex-shrink-0 flex items-center justify-center border border-gray-200">
+                                        {athlete.avatar_url ? (
+                                            <img src={athlete.avatar_url} alt={athlete.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <User className="w-3.5 h-3.5 text-gray-400" />
+                                        )}
+                                    </div>
                                     {athlete.name}
                                   </Link>
                                   <button
@@ -465,10 +726,17 @@ export default function AthletesList() {
                                   >
                                     [{getBadgeLabel(athlete.venue, athlete.team)}]
                                   </button>
-                                  <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${statusInfo.color}`}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openQuickStatusEdit(athlete);
+                                    }}
+                                    className={`ml-2 px-2 py-0.5 rounded text-xs font-medium cursor-pointer hover:opacity-80 ${statusInfo.color}`}
+                                    title="点击修改训练状态"
+                                  >
                                     [{statusInfo.label}]
                                     {destination && `·${destination}`}
-                                  </span>
+                                  </button>
                                 </div>
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-sm">
@@ -481,18 +749,29 @@ export default function AthletesList() {
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap text-gray-500 text-sm">{athlete.gender || "-"}</td>
                               <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <button
-                                  onClick={() => openEditModal(athlete)}
-                                  className="text-blue-600 hover:text-blue-900 mr-3"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(athlete.id)}
-                                  className="text-red-600 hover:text-red-900"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                <div className="flex justify-end gap-2">
+                                  <Link
+                                    to={`/athletes/${athlete.id}/log`}
+                                    className="text-green-600 hover:text-green-900"
+                                    title="录入成绩"
+                                  >
+                                    <TrendingUp className="w-4 h-4" />
+                                  </Link>
+                                  <button
+                                    onClick={() => openEditModal(athlete)}
+                                    className="text-blue-600 hover:text-blue-900"
+                                    title="编辑"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(athlete.id)}
+                                    className="text-red-600 hover:text-red-900"
+                                    title="删除"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -505,6 +784,64 @@ export default function AthletesList() {
             );
           })}
         </div>
+      )}
+
+      {/* Quick Entry Modal (Selection) */}
+      {showQuickEntryModal && (
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 max-w-lg w-full h-[80vh] flex flex-col">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold">选择运动员录入成绩</h2>
+                    <button onClick={() => { setShowQuickEntryModal(false); navigate('/athletes', { replace: true }); }} className="text-gray-500 hover:text-gray-700">
+                        <span className="text-2xl">&times;</span>
+                    </button>
+                </div>
+                
+                <div className="mb-4">
+                    <input
+                        type="text"
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                        placeholder="搜索姓名..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        autoFocus
+                    />
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-2">
+                    {filteredAthletes.map(athlete => (
+                        <div 
+                            key={athlete.id}
+                            onClick={() => {
+                                setShowQuickEntryModal(false);
+                                navigate(`/athletes/${athlete.id}/log`);
+                            }}
+                            className="p-3 border rounded-md hover:bg-blue-50 cursor-pointer flex items-center justify-between"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                                     {athlete.avatar_url ? (
+                                        <img src={athlete.avatar_url} alt={athlete.name} className="w-full h-full object-cover" />
+                                     ) : (
+                                        <User className="w-4 h-4 text-gray-500" />
+                                     )}
+                                </div>
+                                <div>
+                                    <div className="font-bold text-gray-800">{athlete.name}</div>
+                                    <div className="text-xs text-gray-500">
+                                        {athlete.birth_year}年 · {athlete.gender} · {getBadgeLabel(athlete.venue, athlete.team)}
+                                    </div>
+                                </div>
+                            </div>
+                            <ChevronDown className="w-4 h-4 text-gray-400 -rotate-90" />
+                        </div>
+                    ))}
+                    {filteredAthletes.length === 0 && (
+                        <div className="text-center text-gray-500 py-4">未找到匹配的运动员</div>
+                    )}
+                </div>
+            </div>
+         </div>
       )}
 
       {/* Add/Edit Modal */}
@@ -713,6 +1050,72 @@ export default function AthletesList() {
                 <button
                   type="button"
                   onClick={() => setQuickEditAthlete(null)}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-dolphin-gold text-dolphin-blue font-bold rounded-md hover:bg-yellow-400 shadow-sm"
+                >
+                  保存
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Quick Edit Status Modal */}
+      {quickEditStatusAthlete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+            <h2 className="text-lg font-bold mb-4">修改训练状态 - {quickEditStatusAthlete.name}</h2>
+            <form onSubmit={handleQuickStatusSubmit}>
+              <div className="grid grid-cols-1 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">训练状态</label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as any)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="training">在训</option>
+                    <option value="paused">停训</option>
+                    <option value="trial">走训</option>
+                    <option value="transferred">输送</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">状态开始日期</label>
+                  <input
+                    type="date"
+                    required
+                    value={statusStartDate}
+                    onChange={(e) => setStatusStartDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {(status === 'transferred' || status === 'trial') && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {status === 'transferred' ? '输送去向' : '走训去向'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="如: 省队、国家队"
+                    value={transferDest}
+                    onChange={(e) => setTransferDest(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickEditStatusAthlete(null)}
                   className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md"
                 >
                   取消
