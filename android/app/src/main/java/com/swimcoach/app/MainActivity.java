@@ -1,4 +1,4 @@
-package com.example.swimcoach;
+package com.swimcoach.app;
 
 import com.getcapacitor.BridgeActivity;
 
